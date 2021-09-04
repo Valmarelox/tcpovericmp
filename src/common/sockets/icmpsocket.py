@@ -7,7 +7,8 @@ class ICMPSocket:
     def sendmsg(self, msg: ICMPMessage):
         pass
 
-    def recvmsg(self) -> ICMPMessage
+    def recvmsg(self) -> ICMPMessage:
+        pass
 
     def fileno(self):
         return self._s.fileno()
