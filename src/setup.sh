@@ -34,6 +34,8 @@ ip netns exec client_tunnel ip link set ct up
 ip netns exec server_tunnel ip link set st up
 ip netns exec server_tunnel iptables --append INPUT --protocol tcp --jump DROP
 ip netns exec client_tunnel iptables -I OUTPUT -p icmp --icmp-type destination-unreachable -j DROP
+ip netns exec client_tunnel iptables --append INPUT -i ct --protocol icmp --jump DROP
+ip netns exec server_tunnel iptables --append INPUT -i st --protocol icmp --jump DROP
 
 
 # Config server & tunnel - emulate another LAN

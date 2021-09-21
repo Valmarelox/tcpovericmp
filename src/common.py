@@ -1,7 +1,6 @@
-import asyncio
 import struct
 import subprocess
-from asyncio import AbstractEventLoop
+from asyncio import AbstractEventLoop, Future
 from ctypes import create_string_buffer, addressof
 
 from scapy.all import *
@@ -42,8 +41,28 @@ class AsyncSocket:
     async def send(self, data: bytes):
         return await self._loop.sock_sendall(self._s, data)
 
-    def sendto(self, data, to):
-        return self._s.sendto(data, to)
+    async def sendto(self, data, to):
+        future = self._loop.create_future()
+        self._sendto(future, None, data, to)
+        return await future
+
+    def _sendto(self, fut: Future, fd, data, to):
+        if fd is not None:
+            self._loop.remove_writer(fd)
+        if fut.cancelled():
+            return
+
+        try:
+            n = self._s.sendto(data, to)
+            fut.set_result(None)
+            return
+        except (BlockingIOError, InterruptedError):
+            n = 0
+        except Exception as e:
+            fut.set_exception(e)
+            return
+
+        self._loop.add_writer(self._s.fileno(), self._sendto, fut, self._s.fileno(), data, to)
 
     def connect(self, t: Tuple):
         return self._s.connect(t)
@@ -78,10 +97,12 @@ class AsyncSocket:
 
 async def tunneler_to_tcp(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
     print("Tunneling")
+    # TODO: Merge when having AsyncSocket for stream and Datagram
     while True:
         data = await src.recv(2 ** 16 - 1)
-        data = transform(data)
-        send(IP(data))
+        # Don't die on transform fails
+        pkt = transform(data)
+        await dst.sendto(bytes(pkt), (pkt[IP].dst, 0))
 
 
 async def tunneler(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
@@ -90,40 +111,3 @@ async def tunneler(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
         data = await src.recv(2 ** 16 - 1)
         data = transform(data)
         await dst.send(data)
-
-
-def icmp_unwrapper(data: bytes) -> bytes:
-    ihl = data[0] & 0xf
-    assert ihl == 5, ihl
-    data = data[20 + 8:]
-    pkt = IP(data)
-    print('Unwrapper', pkt.summary())
-    pkt[IP].src = None
-    pkt[TCP].chksum = None
-    pkt[IP].chksum = None
-    data = bytes(pkt)
-    print('NONONO', data)
-    return data
-
-def icmp_unwrapper1(data: bytes) -> bytes:
-    ihl = data[0] & 0xf
-    assert ihl == 5, ihl
-    data = data[20 + 8:]
-    pkt = IP(data)
-    print('Unwrapper', pkt.summary())
-    print('NONONO', data)
-    return data
-
-def icmp_wrapper(data: bytes) -> bytes:
-    # TODO: Do proper
-    print('Wrapper', IP(data[14:]).summary())
-    return struct.pack('!BBHHH', 8, 0, 0, 37, 1) + data[14:]
-
-def icmp_wrapper1(data: bytes) -> bytes:
-    # TODO: Do proper
-    pkt = IP(data[14:])
-    pkt[IP].dst = '1.0.0.2'
-    pkt[IP].chksum = None
-    pkt[TCP].chksum = None
-    print('Wrapper', pkt.summary())
-    return struct.pack('!BBHHH', 8, 0, 0, 37, 1) + bytes(pkt)
