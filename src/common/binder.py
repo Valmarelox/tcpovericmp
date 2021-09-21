@@ -1,3 +1,4 @@
+from select import select
 
 
 class Binder:
@@ -10,4 +11,9 @@ class Binder:
 
     def loop(self):
         # TODO: Create a select loop and send/recv messages from both sockets
-        pass
+        while True:
+            read, _, _ = select([self.sock1, self.sock2], [], [])
+            if self.sock1 in read:
+                self.sock2.sendmsg(self.sock1.recvmsg())
+            if self.sock2 in read:
+                self.sock1.sendmsg(self.sock2.recvmsg())

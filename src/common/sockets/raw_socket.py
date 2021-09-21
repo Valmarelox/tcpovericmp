@@ -1,4 +1,5 @@
-from socket import AF_PACKET, SOCK_RAW
+from socket import AF_PACKET, SOCK_RAW, socket
+
 
 class RawSocket:
     def __init__(self, bpf):
