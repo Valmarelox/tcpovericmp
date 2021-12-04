@@ -12,7 +12,6 @@ SELF_TUNNEL_IP = '2.0.0.2'
 
 
 def icmp_wrapper(data: bytes) -> bytes:
-    print('Wrapper', IP(data[14:]).summary())
     return bytes(ICMP(seq=1, id=37)) + bytes(Ether(data)[IP])
 
 def icmp_unwrapper1(data: bytes) -> bytes:

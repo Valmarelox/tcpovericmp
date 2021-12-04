@@ -46,4 +46,11 @@ ip netns exec server ip address add 3.0.0.2/24 dev s2t
 ip netns exec server_tunnel ip link set t2s up
 ip netns exec server ip link set s2t up
 ip netns exec server ip route add default via 3.0.0.1
+
+# As we encapsulate packets in the tunnel - we must lower the MTU of the client and the server to accomodate the raw sends
+ip netns exec client ifconfig c2t mtu 1400
+ip netns exec server ifconfig s2t mtu 1400
+# TSO can cause packets which are larger then the set mtu
+ip netns exec client ethtool -K c2t tso off
+ip netns exec server ethtool -K s2t tso off
 set +ex

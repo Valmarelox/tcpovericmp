@@ -22,7 +22,6 @@ hexify = partial(codecs.encode, encoding='hex')
 def get_bpf(filter: str):
     p = subprocess.Popen(["tcpdump", "-ddd", filter], stdout=subprocess.PIPE)
     count = p.stdout.readline().strip()
-    print(f"Got BPF of {int(count)} opcodes")
     opcode_packer = struct.Struct("HBBI")
     for line in p.stdout:
         code, k, jt, jf = (int(x) for x in line.strip().split(b' '))
@@ -56,7 +55,7 @@ class AsyncSocket:
             return
 
         try:
-            print('send to', IP(data).summary(), to)
+            IP(data).show()
             n = self._s.sendto(data, to)
             fut.set_result(None)
             return
@@ -75,7 +74,6 @@ class AsyncSocket:
         return self._s.bind(t)
 
     def set_bpf(self, filter: str):
-        # TODO: Less hack
         # Set a bpf that blocks all traffic
         self._set_bpf('vlan 100')
         # Flush the socket of any previous packets
@@ -110,8 +108,6 @@ class AsyncSocket:
 
 
 async def tunneler_to_tcp(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
-    print("Tunneling")
-    # TODO: Merge when having AsyncSocket for stream and Datagram
     while True:
         data = await src.recv(2 ** 16 - 1)
         # Don't die on transform fails
@@ -120,7 +116,6 @@ async def tunneler_to_tcp(src: AsyncSocket, dst: AsyncSocket, transform: Callabl
 
 
 async def tunneler(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
-    print("Tunneling")
     while True:
         data = await src.recv(2 ** 16 - 1)
         data = transform(data)

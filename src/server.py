@@ -20,7 +20,6 @@ def rnat(pkt):
         Reverse NAT a response packet
     """
     pkt[IP].dst, _, pkt[TCP].dport, _ = RNAT_TABLE[(pkt[IP].dst, pkt[IP].src, pkt[TCP].dport, pkt[TCP].sport)]
-    print(pkt[IP].dst, pkt[TCP].dport)
 
 
 def nat(pkt):
@@ -33,7 +32,6 @@ def nat(pkt):
         # TODO: Clean the NAT
         _, masquarade_tuple = NAT_TABLE[four_tuple]
         NAT_TABLE[four_tuple] = (datetime.now(), masquarade_tuple)
-        print(masquarade_tuple)
         pkt[IP].src, _, pkt[TCP].sport, _ = masquarade_tuple
     else:
         sport = CURRENT_PORT
@@ -46,14 +44,11 @@ def nat(pkt):
 
 
 def icmp_unwrapper(data: bytes) -> bytes:
-    print('Unwrapping packet')
     pkt = IP(bytes(IP(data)[Raw]))
     nat(pkt)
 
     pkt[IP].chksum = None
     pkt[TCP].chksum = None
-
-    print('Unwrapper', pkt.summary())
     return pkt
 
 
@@ -64,7 +59,6 @@ def icmp_wrapper(data: bytes) -> bytes:
     pkt[IP].chksum = None
     pkt[TCP].chksum = None
 
-    print('Wrapper', pkt.summary())
     return bytes(ICMP(seq=1, id=37)) + bytes(pkt)
 
 
