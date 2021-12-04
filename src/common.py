@@ -55,7 +55,6 @@ class AsyncSocket:
             return
 
         try:
-            IP(data).show()
             n = self._s.sendto(data, to)
             fut.set_result(None)
             return

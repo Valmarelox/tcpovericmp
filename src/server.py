@@ -2,7 +2,7 @@ import asyncio
 import struct
 from scapy.all import *
 from socket import socket, AF_INET, SOCK_RAW, IPPROTO_ICMP, IPPROTO_RAW, IPPROTO_IP, IP_HDRINCL, AF_PACKET, SOL_SOCKET
-from itertools import cycle
+from datetime import datetime, timedelta
 
 from src.common import AsyncSocket, tunneler, tunneler_to_tcp, get_bpf
 
@@ -34,12 +34,22 @@ def nat(pkt):
         NAT_TABLE[four_tuple] = (datetime.now(), masquarade_tuple)
         pkt[IP].src, _, pkt[TCP].sport, _ = masquarade_tuple
     else:
-        sport = CURRENT_PORT
-        CURRENT_PORT = (CURRENT_PORT + 1) % (2 ** 16)
-        mask_tuple = (SELF_WORLD_IP, pkt[IP].dst, sport, pkt[TCP].dport)
+        # add new entry to the table
+        for _ in range(2 ** 16):
+            sport = CURRENT_PORT
+            CURRENT_PORT = (CURRENT_PORT + 1) % (2 ** 16)
+            mask_tuple = (SELF_WORLD_IP, pkt[IP].dst, sport, pkt[TCP].dport)
+            if mask_tuple not in RNAT_TABLE:
+                break
+            last_used, _ = NAT_TABLE[four_tuple]
+            if datetime.now() - last_used >= 15 * 60:
+                # Record is stale, override
+                break
+        else:
+            # Too many clients try to acess the same target address, cannot NAT them all
+            raise RuntimeError(f"Too many nat records for {pkt[IP].dst}:{pkt[TCP].dport}")
         NAT_TABLE[four_tuple] = (datetime.now(), mask_tuple)
         RNAT_TABLE[mask_tuple] = four_tuple
-        print('Not in NAT table')
         pkt[IP].src, _, pkt[TCP].sport, _ = mask_tuple
 
 
