@@ -30,6 +30,9 @@ def get_bpf(filter: str):
 
 
 class AsyncSocket:
+    """
+        Wrap a socket object - allowing it to be used with asyncio library
+    """
     def __init__(self, loop: AbstractEventLoop, s: socket):
         self._loop = loop
         self._s = s
@@ -53,6 +56,7 @@ class AsyncSocket:
             return
 
         try:
+            print('send to', IP(data).summary(), to)
             n = self._s.sendto(data, to)
             fut.set_result(None)
             return
@@ -72,7 +76,17 @@ class AsyncSocket:
 
     def set_bpf(self, filter: str):
         # TODO: Less hack
+        # Set a bpf that blocks all traffic
         self._set_bpf('vlan 100')
+        # Flush the socket of any previous packets
+        self._flush_socket()
+        # Set the actual bpf
+        self._set_bpf(filter)
+
+    def setsockopt(self, level, optname, value):
+        return self._s.setsockopt(level, optname, value)
+
+    def _flush_socket(self):
         try:
             while True:
                 b = self._s.recv(1)
@@ -80,12 +94,12 @@ class AsyncSocket:
             pass
         except:
             raise
-        self._set_bpf(filter)
+
 
     def _set_bpf(self, filter: str):
-        # TODO: Flush
         prog = list(get_bpf(filter))
         prog_buffer = b''.join(prog)
+        # Use ctypes to generate the struct required by setsockopt
         b = create_string_buffer(prog_buffer)
         mem_addr = addressof(b)
         fprog = struct.pack('HL', len(prog), mem_addr)
