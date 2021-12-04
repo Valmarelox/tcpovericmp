@@ -35,6 +35,7 @@ def nat(pkt):
 
 
 def icmp_unwrapper(data: bytes) -> bytes:
+    print('Unwrapping packet')
     ihl = data[0] & 0xf
     assert ihl == 5, ihl
     data = data[20 + 8:]
