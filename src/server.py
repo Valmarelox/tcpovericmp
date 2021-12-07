@@ -65,7 +65,11 @@ def icmp_unwrapper(data: bytes) -> bytes:
 def icmp_wrapper(data: bytes) -> bytes:
     # TODO: Do proper
     pkt = Ether(data)[IP]
-    rnat(pkt)
+    try:
+        rnat(pkt)
+    except KeyError:
+        # Drop the packet if we can't reverse NAT it
+        return
 
     # Let scapy recalculate the checksums
     pkt[IP].chksum = None
@@ -93,4 +97,4 @@ async def main():
     await server()
 
 
-asyncio.run(main(), debug=True)
+asyncio.run(main())

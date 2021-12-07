@@ -29,7 +29,7 @@ class AsyncSocket:
         return await self._loop.sock_sendall(self._s, data)
 
     async def sendto(self, data, to):
-        if not to:
+        if to is None:
             return await self.send(data)
 
         future = self._loop.create_future()
@@ -43,7 +43,12 @@ class AsyncSocket:
             return
 
         try:
-            n = self._s.sendto(data, to)
+            try:
+                n = self._s.sendto(data, to)
+            except OSError:
+                print(data, to)
+                IP(data).show()
+                raise
             fut.set_result(None)
             return
         except (BlockingIOError, InterruptedError):
@@ -94,6 +99,6 @@ async def tunneler(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
     while True:
         data = await src.recv(2 ** 16 - 1)
         # Don't die on transform fails
-        res = transform(data)
-        await dst.sendto(*res)
+        if res := transform(data):
+            await dst.sendto(*res)
 

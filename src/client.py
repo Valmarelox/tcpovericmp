@@ -49,4 +49,4 @@ async def main():
     await client(options.dst_ip)
 
 
-asyncio.run(main(), debug=True)
+asyncio.run(main())
