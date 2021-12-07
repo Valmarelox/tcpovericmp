@@ -1,10 +1,10 @@
 import asyncio
 import struct
-from scapy.all import *
+from scapy.layers.all import Ether, IP, TCP, ICMP, Raw
 from socket import socket, AF_INET, SOCK_RAW, IPPROTO_ICMP, IPPROTO_RAW, IPPROTO_IP, IP_HDRINCL, AF_PACKET, SOL_SOCKET
 from datetime import datetime, timedelta
 
-from src.common import AsyncSocket, tunneler, tunneler_to_tcp, get_bpf
+from src.common import AsyncSocket, tunneler, tunneler, get_bpf
 
 NAT_TABLE = {}
 RNAT_TABLE = {}
@@ -59,17 +59,19 @@ def icmp_unwrapper(data: bytes) -> bytes:
 
     pkt[IP].chksum = None
     pkt[TCP].chksum = None
-    return pkt
+    return bytes(pkt), (pkt[IP].dst, 0)
 
 
 def icmp_wrapper(data: bytes) -> bytes:
     # TODO: Do proper
     pkt = Ether(data)[IP]
     rnat(pkt)
+
+    # Let scapy recalculate the checksums
     pkt[IP].chksum = None
     pkt[TCP].chksum = None
 
-    return bytes(ICMP(seq=1, id=37)) + bytes(pkt)
+    return bytes(ICMP(seq=1, id=37)) + bytes(pkt), None
 
 
 async def server():
@@ -78,11 +80,10 @@ async def server():
     icmp_sock.bind((SELF_TUNNEL_IP, 0))
     icmp_sock.connect((TARGET_TUNNEL_IP, 0))
     tcp_sock = AsyncSocket(loop, socket(AF_INET, SOCK_RAW, IPPROTO_RAW))
-    tcp_sock.setsockopt(IPPROTO_IP, IP_HDRINCL, 1)
     tcp_sniff_sock = AsyncSocket(loop, socket(AF_PACKET, SOCK_RAW, 0x08))
     tcp_sniff_sock.set_bpf('tcp and inbound')
     tasks = [
-        asyncio.create_task(tunneler_to_tcp(icmp_sock, tcp_sock, icmp_unwrapper)),
+        asyncio.create_task(tunneler(icmp_sock, tcp_sock, icmp_unwrapper)),
         asyncio.create_task(tunneler(tcp_sniff_sock, icmp_sock, icmp_wrapper)),
     ]
     await asyncio.wait(tasks)

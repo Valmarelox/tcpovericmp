@@ -9,23 +9,8 @@ from functools import partial
 from socket import socket, SOL_SOCKET
 import codecs
 
-hexify = partial(codecs.encode, encoding='hex')
-
-
-# TODO: Namespace with tunneler as default gateway
-# TODO: Client that wraps in ICMP properly (including IP Headers)
-# TODO: Server that unwraps properly
-# TODO: Can I iptables NAT my raw sockets
-# TODO: Iptables NAT on server side (using socket marks to release TCP through
-# TODO: Do the reverse in the server side (add client code and vise versa)
-
-def get_bpf(filter: str):
-    p = subprocess.Popen(["tcpdump", "-ddd", filter], stdout=subprocess.PIPE)
-    count = p.stdout.readline().strip()
-    opcode_packer = struct.Struct("HBBI")
-    for line in p.stdout:
-        code, k, jt, jf = (int(x) for x in line.strip().split(b' '))
-        yield opcode_packer.pack(code, k, jt, jf)
+def get_bpf(s: str):
+    return bpf.core.compile_filter(s, linktype=1)
 
 
 class AsyncSocket:
@@ -44,6 +29,9 @@ class AsyncSocket:
         return await self._loop.sock_sendall(self._s, data)
 
     async def sendto(self, data, to):
+        if not to:
+            return await self.send(data)
+
         future = self._loop.create_future()
         self._sendto(future, None, data, to)
         return await future
@@ -74,7 +62,7 @@ class AsyncSocket:
 
     def set_bpf(self, filter: str):
         # Set a bpf that blocks all traffic
-        self._set_bpf('vlan 100')
+        self._set_bpf('ip[0] = 0')
         # Flush the socket of any previous packets
         self._flush_socket()
         # Set the actual bpf
@@ -93,29 +81,19 @@ class AsyncSocket:
             raise
 
 
-    def _set_bpf(self, filter: str):
-        prog = list(get_bpf(filter))
-        prog_buffer = b''.join(prog)
-        # Use ctypes to generate the struct required by setsockopt
-        b = create_string_buffer(prog_buffer)
-        mem_addr = addressof(b)
-        fprog = struct.pack('HL', len(prog), mem_addr)
-        self._s.setsockopt(SOL_SOCKET, 26, fprog)
+    def _set_bpf(self, bpf: str):
+        prog = get_bpf(bpf)
+        # call SO_ATTACH_FILTER
+        self._s.setsockopt(SOL_SOCKET, 26, prog)
 
     def __repr__(self):
         return f'<AsyncSocket {self._s.family},{self._s.type},{self._s.proto}>'
 
 
-async def tunneler_to_tcp(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
-    while True:
-        data = await src.recv(2 ** 16 - 1)
-        # Don't die on transform fails
-        pkt = transform(data)
-        await dst.sendto(bytes(pkt), (pkt[IP].dst, 0))
-
-
 async def tunneler(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
     while True:
         data = await src.recv(2 ** 16 - 1)
-        data = transform(data)
-        await dst.send(data)
+        # Don't die on transform fails
+        res = transform(data)
+        await dst.sendto(*res)
+

@@ -2,21 +2,22 @@ import asyncio
 import struct
 from asyncio import DatagramProtocol
 
-from scapy.all import *
+from scapy.layers.all import Ether, IP, TCP, ICMP, Raw
 from socket import socket, AF_INET, SOCK_RAW, IPPROTO_ICMP, AF_PACKET, IPPROTO_TCP, IPPROTO_RAW
 
-from src.common import AsyncSocket, tunneler, tunneler_to_tcp
+from src.common import AsyncSocket, tunneler, tunneler
 from optparse import OptionParser
 
 SELF_TUNNEL_IP = '2.0.0.2'
 
 
 def icmp_wrapper(data: bytes) -> bytes:
-    return bytes(ICMP(seq=1, id=37)) + bytes(Ether(data)[IP])
+    return bytes(ICMP(seq=1, id=37)) + bytes(Ether(data)[IP]), None
 
-def icmp_unwrapper1(data: bytes) -> bytes:
+def icmp_unwrapper(data: bytes) -> bytes:
     wrapper_pkt = IP(data)
-    return IP(bytes(wrapper_pkt[Raw]))
+    pkt = IP(bytes(wrapper_pkt[Raw]))
+    return bytes(pkt), (pkt[IP].dst, 0)
 
 async def client(dst_ip):
     loop = asyncio.get_running_loop()
@@ -32,7 +33,7 @@ async def client(dst_ip):
 
     tasks = [
         asyncio.create_task(tunneler(tcp_sniff_sock, icmp_sock, icmp_wrapper)),
-        asyncio.create_task(tunneler_to_tcp(icmp_sock, response_sock, icmp_unwrapper1))
+        asyncio.create_task(tunneler(icmp_sock, response_sock, icmp_unwrapper))
     ]
     await asyncio.wait(tasks)
 
