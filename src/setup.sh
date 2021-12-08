@@ -38,8 +38,6 @@ ip netns exec client_tunnel iptables -I OUTPUT -p icmp --icmp-type destination-u
 ip netns exec client_tunnel iptables -I OUTPUT -p icmp --icmp-type echo-reply -j DROP
 ip netns exec server_tunnel iptables -I OUTPUT -p icmp --icmp-type destination-unreachable -j DROP
 ip netns exec client_tunnel iptables -I OUTPUT -p icmp --icmp-type echo-reply -j DROP
-#ip netns exec client_tunnel iptables --append INPUT -i ct --protocol icmp --jump DROP
-#ip netns exec server_tunnel iptables --append INPUT -i st --protocol icmp --jump DROP
 
 
 # Config server & tunnel - emulate another LAN
@@ -49,10 +47,10 @@ ip netns exec server_tunnel ip link set t2s up
 ip netns exec server ip link set s2t up
 ip netns exec server ip route add default via 3.0.0.1
 
-# As we encapsulate packets in the tunnel - we must lower the MTU of the client and the server to accomodate the raw sends
+# As we encapsulate packets in the tunnel - we must lower the MTU of the client and the server to accommodate the raw sends
 ip netns exec client ifconfig c2t mtu 1400
 ip netns exec server ifconfig s2t mtu 1400
-# TSO can cause packets which are larger then the set mtu
+# TSO can cause packets which are larger then the set mtu to be sent
 ip netns exec client ethtool -K c2t tso off
 ip netns exec server ethtool -K s2t tso off
 set +ex

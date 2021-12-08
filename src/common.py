@@ -1,22 +1,15 @@
-import struct
-import subprocess
 from asyncio import AbstractEventLoop, Future
-from ctypes import create_string_buffer, addressof
-
-from scapy.all import *
-from typing import Callable, Tuple
-from functools import partial
 from socket import socket, SOL_SOCKET
-import codecs
-
-def get_bpf(s: str):
-    return bpf.core.compile_filter(s, linktype=1)
+from typing import Callable, Tuple, Optional
+from scapy.arch.bpf.core import compile_filter
+from scapy.layers.inet import IP
 
 
 class AsyncSocket:
     """
         Wrap a socket object - allowing it to be used with asyncio library
     """
+
     def __init__(self, loop: AbstractEventLoop, s: socket):
         self._loop = loop
         self._s = s
@@ -44,7 +37,7 @@ class AsyncSocket:
 
         try:
             try:
-                n = self._s.sendto(data, to)
+                self._s.sendto(data, to)
             except OSError:
                 print(data, to)
                 IP(data).show()
@@ -52,7 +45,7 @@ class AsyncSocket:
             fut.set_result(None)
             return
         except (BlockingIOError, InterruptedError):
-            n = 0
+            pass
         except Exception as e:
             fut.set_exception(e)
             return
@@ -67,7 +60,7 @@ class AsyncSocket:
 
     def set_bpf(self, filter: str):
         # Set a bpf that blocks all traffic
-        self._set_bpf('ip[0] = 0')
+        self._set_bpf('ip[0] = 0 and vlan 100')
         # Flush the socket of any previous packets
         self._flush_socket()
         # Set the actual bpf
@@ -82,23 +75,23 @@ class AsyncSocket:
                 b = self._s.recv(1)
         except BlockingIOError:
             pass
-        except:
-            raise
 
-
-    def _set_bpf(self, bpf: str):
-        prog = get_bpf(bpf)
+    def _set_bpf(self, bpf_filter: str):
+        # linktype=1 is DLT_EN10MB
+        prog = compile_filter(bpf_filter, linktype=1)
         # call SO_ATTACH_FILTER
-        self._s.setsockopt(SOL_SOCKET, 26, prog)
+        self.setsockopt(SOL_SOCKET, 26, prog)
 
     def __repr__(self):
         return f'<AsyncSocket {self._s.family},{self._s.type},{self._s.proto}>'
 
 
-async def tunneler(src: AsyncSocket, dst: AsyncSocket, transform: Callable):
-    while True:
-        data = await src.recv(2 ** 16 - 1)
-        # Don't die on transform fails
-        if res := transform(data):
-            await dst.sendto(*res)
+TransformFuncType = Callable[[bytes], Optional[tuple[bytes, Optional[tuple[bytes, int]]]]]
 
+
+async def tunneler(src: AsyncSocket, dst: AsyncSocket, transform: TransformFuncType):
+    while True:
+        data = await src.recv(2 ** 16 - 1)  # Max IP Packet size
+        if res := transform(data):
+            # transmit if transform didn't drop the packet
+            await dst.sendto(*res)
