@@ -15,6 +15,11 @@ class AsyncSocket:
         self._s = s
         self._s.setblocking(False)
 
+    def __del__(self):
+        if self._s:
+            self._s.close()
+            self._s = None
+
     async def recv(self, nbytes: int):
         return await self._loop.sock_recv(self._s, nbytes)
 

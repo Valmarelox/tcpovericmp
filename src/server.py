@@ -10,6 +10,8 @@ from src.common import AsyncSocket, tunneler
 NAT_TABLE = {}
 RNAT_TABLE = {}
 CURRENT_PORT = 1025
+PORT_MAX = 2 ** 16
+NAT_RECORD_TIMEOUT = 15 * 60
 
 SELF_TUNNEL_IP = '2.0.0.1'
 TARGET_TUNNEL_IP = '2.0.0.2'
@@ -28,15 +30,15 @@ def _nat_new_entry(pkt, four_tuple):
     global CURRENT_PORT
     # add new entry to the table
     # Attempt to find a free port for the new four tuple
-    for _ in range(2 ** 16):
+    for _ in range(PORT_MAX):
         sport = CURRENT_PORT
-        CURRENT_PORT = (CURRENT_PORT + 1) % (2 ** 16)
+        CURRENT_PORT = (CURRENT_PORT + 1) % (PORT_MAX)
         mask_tuple = (SELF_WORLD_IP, pkt[IP].dst, sport, pkt[TCP].dport)
         if mask_tuple not in RNAT_TABLE:
             # The port is not in the table
             break
         last_used, _ = NAT_TABLE[four_tuple]
-        if datetime.now() - last_used >= 15 * 60:
+        if datetime.now() - last_used >= NAT_RECORD_TIMEOUT:
             # Record is stale, override
             break
     else:
@@ -70,7 +72,12 @@ def nat(pkt):
 
 
 def icmp_unwrapper(data: bytes) -> Optional[tuple[bytes, Optional[tuple[bytes, int]]]]:
-    pkt = IP(bytes(IP(data)[Raw]))
+    wrapped_pkt = IP(data)
+    pkt = IP(bytes(wrapped_pkt[Raw]))
+    if wrapped_pkt[ICMP].type != 8:
+        # Drop all packets which are not ICMP Echo request
+        return
+
     nat(pkt)
 
     # Let scapy recalculate the checksums
@@ -84,6 +91,7 @@ def icmp_wrapper(data: bytes) -> Optional[tuple[bytes, Optional[tuple[bytes, int
         Server => Tunnel transformer
     """
     pkt = Ether(data)[IP]
+
     try:
         rnat(pkt)
     except KeyError:

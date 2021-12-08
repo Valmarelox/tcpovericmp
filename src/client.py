@@ -11,11 +11,15 @@ SELF_TUNNEL_IP = '2.0.0.2'
 
 
 def icmp_wrapper(data: bytes) -> Optional[tuple[bytes, Optional[tuple[bytes, int]]]]:
+    # Wrap the packet IP layer and up in an ICMP Echo Request header
     return bytes(ICMP(seq=1, id=37)) + bytes(Ether(data)[IP]), None
 
 
 def icmp_unwrapper(data: bytes) -> Optional[tuple[bytes, Optional[tuple[bytes, int]]]]:
     wrapper_pkt = IP(data)
+    if wrapper_pkt[ICMP].type != 8:
+        # Drop all packets which are not ICMP Echo request
+        return
     pkt = IP(bytes(wrapper_pkt[Raw]))
     return bytes(pkt), (pkt[IP].dst, 0)
 
