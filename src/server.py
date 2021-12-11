@@ -5,7 +5,7 @@ from typing import Tuple, Optional
 
 from scapy.layers.all import Ether, IP, TCP, ICMP, Raw
 
-from src.common import AsyncSocket, tunneler
+from src.common import AsyncSocket, tunneler, TransformResult
 
 NAT_TABLE = {}
 RNAT_TABLE = {}
@@ -71,7 +71,7 @@ def nat(pkt):
     pkt[IP].src, _, pkt[TCP].sport, _ = masquarade_tuple
 
 
-def icmp_unwrapper(data: bytes) -> Optional[tuple[bytes, Optional[tuple[bytes, int]]]]:
+def icmp_unwrapper(data: bytes) -> TransformResult:
     wrapped_pkt = IP(data)
     pkt = IP(bytes(wrapped_pkt[Raw]))
     if wrapped_pkt[ICMP].type != 8:
@@ -86,7 +86,7 @@ def icmp_unwrapper(data: bytes) -> Optional[tuple[bytes, Optional[tuple[bytes, i
     return bytes(pkt), (pkt[IP].dst, 0)
 
 
-def icmp_wrapper(data: bytes) -> Optional[tuple[bytes, Optional[tuple[bytes, int]]]]:
+def icmp_wrapper(data: bytes) -> TransformResult:
     """
         Server => Tunnel transformer
     """

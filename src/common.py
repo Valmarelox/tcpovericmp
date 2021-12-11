@@ -2,7 +2,6 @@ from asyncio import AbstractEventLoop, Future
 from socket import socket, SOL_SOCKET
 from typing import Callable, Tuple, Optional
 from scapy.arch.bpf.core import compile_filter
-from scapy.layers.inet import IP
 
 
 class AsyncSocket:
@@ -35,27 +34,23 @@ class AsyncSocket:
         return await future
 
     def _sendto(self, fut: Future, fd, data, to):
+        """
+            Implementation of sendto which supports async
+        """
         if fd is not None:
             self._loop.remove_writer(fd)
         if fut.cancelled():
             return
 
         try:
-            try:
-                self._s.sendto(data, to)
-            except OSError:
-                print(data, to)
-                IP(data).show()
-                raise
+            self._s.sendto(data, to)
             fut.set_result(None)
             return
         except (BlockingIOError, InterruptedError):
-            pass
+            self._loop.add_writer(self._s.fileno(), self._sendto, fut, self._s.fileno(), data, to)
         except Exception as e:
             fut.set_exception(e)
-            return
 
-        self._loop.add_writer(self._s.fileno(), self._sendto, fut, self._s.fileno(), data, to)
 
     def connect(self, t: Tuple):
         return self._s.connect(t)
@@ -64,6 +59,9 @@ class AsyncSocket:
         return self._s.bind(t)
 
     def set_bpf(self, filter: str):
+        """
+            Set a bpf specified by the textual format in `filter`
+        """
         # Set a bpf that blocks all traffic
         self._set_bpf('ip[0] = 0 and vlan 100')
         # Flush the socket of any previous packets
@@ -91,10 +89,14 @@ class AsyncSocket:
         return f'<AsyncSocket {self._s.family},{self._s.type},{self._s.proto}>'
 
 
-TransformFuncType = Callable[[bytes], Optional[tuple[bytes, Optional[tuple[bytes, int]]]]]
+TransformResult = Optional[tuple[bytes, Optional[tuple[bytes, int]]]]
+TransformFuncType = Callable[[bytes], TransformResult]
 
 
 async def tunneler(src: AsyncSocket, dst: AsyncSocket, transform: TransformFuncType):
+    """
+        Read from src, pass to the transform function, send on the dst socket
+    """
     while True:
         data = await src.recv(2 ** 16 - 1)  # Max IP Packet size
         if res := transform(data):
